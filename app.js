@@ -20,6 +20,11 @@ const ADMIN = {
   password: "Skoro2026",
 };
 
+const PROMO_CODES = {
+  SKORO10: { label: "Скидка 10%", type: "percent", value: 10 },
+  FOOD300: { label: "Скидка 300 ₽", type: "fixed", value: 300 },
+};
+
 const INITIAL_PRODUCTS = [
   { id: "milk", name: "Молоко", category: "Молочное", price: 109, old_price: 139, image: "assets/dj-milk.webp", badge: "15 мин", description: "Молоко в упаковке, карточка товара с реальным фото продукта." },
   { id: "eggs", name: "Яйца", category: "Бакалея", price: 139, old_price: 169, image: "assets/dj-eggs.webp", badge: "Выгодно", description: "Упаковка яиц для завтраков и домашней выпечки." },
@@ -69,12 +74,13 @@ const IMAGE_OPTIONS = [
   "assets/yogurt.jpg",
 ];
 
-let state = { products: [], category: "Все", query: "", cart: {}, user: null, delivery: "Доставка", authMode: "login", sort: "popular", editing: null, adminQuery: "" };
+let state = { products: [], category: "Все", query: "", cart: {}, user: null, delivery: "Доставка", authMode: "login", sort: "popular", editing: null, adminQuery: "", promo: "" };
 const app = document.querySelector("#app");
 const money = (value) => new Intl.NumberFormat("ru-RU").format(value) + " ₽";
 
 const SQLITE_KEY = `${SITE.db}:sqlite`;
 const SQLITE_VERSION_KEY = `${SITE.db}:sqlite_catalog_version`;
+const ORDERS_KEY = `${SITE.db}:orders`;
 let sqlitePromise = null;
 
 function bufferToBase64(buffer) {
@@ -207,6 +213,31 @@ function cartItems() {
 function cartTotal() {
   return cartItems().reduce((sum, item) => sum + item.product.price * item.qty, 0);
 }
+function activePromo() {
+  return PROMO_CODES[state.promo.trim().toUpperCase()] || null;
+}
+function promoDiscount(total = cartTotal()) {
+  const promo = activePromo();
+  if (!promo) return 0;
+  const discount = promo.type === "percent" ? Math.round(total * promo.value / 100) : promo.value;
+  return Math.min(total, discount);
+}
+function payableTotal() {
+  return Math.max(0, cartTotal() - promoDiscount());
+}
+function loadOrders() {
+  try {
+    return JSON.parse(localStorage.getItem(ORDERS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+function saveOrders(orders) {
+  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+}
+function userOrders() {
+  return loadOrders().filter((order) => order.email === state.user?.email);
+}
 function setCart(id, qty) {
   if (qty <= 0) delete state.cart[id];
   else state.cart[id] = qty;
@@ -250,13 +281,14 @@ function render() {
   const products = filteredProducts();
   const count = cartItems().reduce((sum, item) => sum + item.qty, 0);
   const adminButton = isAdminUser() ? '<button id="adminOpen">Админ</button>' : "";
+  const accountButton = state.user ? '<button id="accountOpen">Кабинет</button>' : '<button id="authOpen">Войти</button>';
   const logoutButton = state.user ? '<button id="logoutTop">Выйти</button>' : "";
   app.innerHTML = `
     <main>
       <header class="topbar">
         <div class="brand"><span>${SITE.mark}</span><div><strong>${SITE.title}</strong><small>${SITE.subtitle}</small></div></div>
         <input id="search" class="search" value="${state.query}" placeholder="${SITE.search}" />
-        <div class="actions">${adminButton}<button id="authOpen">${state.user ? state.user.name : "Войти"}</button>${logoutButton}<button id="cartFocus">Корзина <b>${count}</b></button></div>
+        <div class="actions">${adminButton}${accountButton}${logoutButton}<button id="cartFocus">Корзина <b>${count}</b></button></div>
       </header>
       <section class="hero">
         <div class="hero-card">
@@ -277,6 +309,7 @@ function render() {
         ${renderCart()}
       </section>
       ${renderAuth()}
+      ${renderProfile()}
     </main>`;
   bindEvents();
 }
@@ -287,13 +320,27 @@ function renderProduct(product) {
 }
 function renderCart() {
   const items = cartItems();
-  return `<aside class="cart" id="cart"><h2>Корзина</h2><div class="cart-list">${items.length ? items.map(({ product, qty }) => `<div class="cart-row"><div><strong>${product.name}</strong><span>${qty} x ${money(product.price)}</span></div><div class="qty"><button data-dec="${product.id}">-</button><b>${qty}</b><button data-inc="${product.id}">+</button></div></div>`).join("") : "<p>Добавьте товары из ленты.</p>"}</div><div class="total"><span>Итого</span><b>${money(cartTotal())}</b></div><div class="segments"><button class="${state.delivery === "Доставка" ? "active" : ""}" data-delivery="Доставка">Доставка</button><button class="${state.delivery === "Самовывоз" ? "active" : ""}" data-delivery="Самовывоз">Самовывоз</button></div><textarea id="address" rows="3" placeholder="Адрес доставки или пункт самовывоза"></textarea><button class="checkout" id="checkout" ${items.length ? "" : "disabled"}>Оформить заказ</button><div class="notice" id="orderNotice"></div></aside>`;
+  const promo = activePromo();
+  const discount = promoDiscount();
+  const promoText = state.promo
+    ? (promo ? `${promo.label}: -${money(discount)}` : "Промокод не найден")
+    : "Попробуйте SKORO10 или FOOD300";
+  return `<aside class="cart" id="cart"><h2>Корзина</h2><div class="cart-list">${items.length ? items.map(({ product, qty }) => `<div class="cart-row"><div><strong>${product.name}</strong><span>${qty} x ${money(product.price)}</span></div><div class="qty"><button data-dec="${product.id}">-</button><b>${qty}</b><button data-inc="${product.id}">+</button></div></div>`).join("") : "<p>Добавьте товары из ленты.</p>"}</div><div class="promo-code"><input id="promoCode" value="${state.promo}" placeholder="Промокод" /><button id="applyPromo" type="button">OK</button></div><div class="promo-hint">${promoText}</div>${discount ? `<div class="cart-discount"><span>Скидка</span><b>-${money(discount)}</b></div>` : ""}<div class="total"><span>Итого</span><b>${money(payableTotal())}</b></div><div class="segments"><button class="${state.delivery === "Доставка" ? "active" : ""}" data-delivery="Доставка">Доставка</button><button class="${state.delivery === "Самовывоз" ? "active" : ""}" data-delivery="Самовывоз">Самовывоз</button></div><textarea id="address" rows="3" placeholder="Адрес доставки или пункт самовывоза"></textarea><button class="checkout" id="checkout" ${items.length ? "" : "disabled"}>Оформить заказ</button><div class="notice" id="orderNotice"></div></aside>`;
 }
 function renderAuth() {
   const loginField = state.authMode === "login"
     ? '<input name="email" type="text" placeholder="Email или логин" required />'
     : '<input name="email" type="email" placeholder="Email" required />';
   return `<div class="modal" id="authModal"><section class="auth"><div class="segments"><button class="${state.authMode === "login" ? "active" : ""}" data-auth-mode="login">Вход</button><button class="${state.authMode === "register" ? "active" : ""}" data-auth-mode="register">Регистрация</button></div><h2>${state.authMode === "login" ? "Войти" : "Создать профиль"}</h2><form id="authForm">${state.authMode === "register" ? '<input name="name" placeholder="Имя" />' : ""}${loginField}<input name="password" type="password" placeholder="Пароль" required /><button class="checkout">${state.authMode === "login" ? "Войти" : "Зарегистрироваться"}</button>${state.user ? '<button type="button" id="logout">Выйти</button>' : ""}<button type="button" id="authClose">Закрыть</button></form><div class="notice" id="authNotice"></div></section></div>`;
+}
+
+function renderProfile() {
+  if (!state.user) return "";
+  const orders = userOrders();
+  const history = orders.length
+    ? orders.map((order) => `<article class="order-row"><div><strong>Заказ #${order.id}</strong><span>${order.date} · ${order.delivery}</span></div><b>${money(order.total)}</b><p>${order.items.map((item) => `${item.name} x ${item.qty}`).join(", ")}</p>${order.promo ? `<small>Промокод: ${order.promo}, скидка ${money(order.discount)}</small>` : ""}</article>`).join("")
+    : '<div class="empty-state"><h3>История заказов пуста</h3><p>После оформления покупки заказ появится здесь.</p></div>';
+  return `<div class="modal" id="profileModal"><section class="auth profile"><div class="profile-head"><div><h2>Личный кабинет</h2><span>${state.user.name}</span></div><button type="button" id="profileClose">Закрыть</button></div><div class="profile-meta"><span>${state.user.email}</span><span>${orders.length} заказов</span></div><h3>История заказов</h3><div class="order-history">${history}</div><button type="button" class="checkout" id="profileLogout">Выйти из аккаунта</button></section></div>`;
 }
 
 function adminProduct() {
@@ -378,11 +425,20 @@ function bindEvents() {
   document.querySelector("#cartFocus")?.addEventListener("click", () => document.querySelector("#cart").scrollIntoView({ behavior: "smooth" }));
   document.querySelector("#cartFocusHero")?.addEventListener("click", () => document.querySelector("#cart").scrollIntoView({ behavior: "smooth" }));
   document.querySelector("#authOpen")?.addEventListener("click", () => document.querySelector("#authModal").classList.add("open"));
+  document.querySelector("#accountOpen")?.addEventListener("click", () => document.querySelector("#profileModal")?.classList.add("open"));
   document.querySelector("#authClose")?.addEventListener("click", () => document.querySelector("#authModal").classList.remove("open"));
+  document.querySelector("#profileClose")?.addEventListener("click", () => document.querySelector("#profileModal")?.classList.remove("open"));
   document.querySelectorAll("[data-auth-mode]").forEach((button) => button.addEventListener("click", () => { state.authMode = button.dataset.authMode; render(); document.querySelector("#authModal").classList.add("open"); }));
   document.querySelector("#authForm")?.addEventListener("submit", submitAuth);
   document.querySelector("#logout")?.addEventListener("click", logout);
   document.querySelector("#logoutTop")?.addEventListener("click", logout);
+  document.querySelector("#profileLogout")?.addEventListener("click", logout);
+  document.querySelector("#promoCode")?.addEventListener("input", (event) => { state.promo = event.target.value; });
+  document.querySelector("#applyPromo")?.addEventListener("click", () => {
+    state.promo = document.querySelector("#promoCode")?.value.trim().toUpperCase() || "";
+    render();
+    document.querySelector("#cart")?.scrollIntoView({ behavior: "smooth" });
+  });
   document.querySelector("#checkout")?.addEventListener("click", checkout);
 }
 function bindProductEvents() {
@@ -475,8 +531,34 @@ async function deleteProduct(id) {
 }
 function checkout() {
   const notice = document.querySelector("#orderNotice");
-  notice.textContent = state.user ? `${state.user.name}, заказ на ${money(cartTotal())} принят. ${state.delivery}: ${document.querySelector("#address").value || "уточним при подтверждении"}.` : "Для оформления войдите или зарегистрируйтесь.";
+  if (!state.user) {
+    notice.textContent = "Для оформления войдите или зарегистрируйтесь.";
+    notice.classList.add("show");
+    return;
+  }
+  const items = cartItems();
+  if (!items.length) return;
+  const total = payableTotal();
+  const discount = promoDiscount();
+  const order = {
+    id: Date.now().toString().slice(-6),
+    email: state.user.email,
+    date: new Date().toLocaleString("ru-RU"),
+    delivery: state.delivery,
+    address: document.querySelector("#address").value || "уточним при подтверждении",
+    subtotal: cartTotal(),
+    discount,
+    promo: activePromo() ? state.promo.trim().toUpperCase() : "",
+    total,
+    items: items.map(({ product, qty }) => ({ id: product.id, name: product.name, price: product.price, qty })),
+  };
+  saveOrders([order, ...loadOrders()]);
+  notice.textContent = `${state.user.name}, заказ #${order.id} на ${money(total)} принят. ${state.delivery}: ${order.address}.`;
   notice.classList.add("show");
+  state.cart = {};
+  state.promo = "";
+  saveCart();
+  setTimeout(render, 900);
 }
 async function start() {
   try {

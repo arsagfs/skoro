@@ -335,6 +335,17 @@ button {
 .cart-list { display: grid; gap: 10px; margin: 12px 0; }
 .cart-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .cart-row strong { display: block; font-size: 14px; }
+.promo-code { display: grid; grid-template-columns: 1fr 58px; gap: 8px; margin-top: 8px; }
+.promo-code input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-transform: uppercase;
+  background: rgba(255,255,255,.78);
+}
+.promo-hint { margin-top: 7px; color: var(--muted); font-size: 13px; }
+.cart-discount { display: flex; justify-content: space-between; gap: 8px; margin: 12px 0 -4px; color: var(--accent); font-weight: 900; }
 .total { display: flex; justify-content: space-between; margin: 14px 0; font-size: 20px; }
 .segments { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
 .cart textarea, .auth input {
@@ -368,6 +379,16 @@ button {
 .auth { width: min(420px, 100%); padding: 16px; }
 .auth h2 { margin: 0 0 12px; }
 .auth form { display: grid; gap: 10px; }
+.profile { width: min(620px, 100%); max-height: min(760px, 92vh); overflow: auto; }
+.profile-head { display: flex; justify-content: space-between; gap: 14px; align-items: start; margin-bottom: 12px; }
+.profile-head span, .profile-meta span { color: var(--muted); }
+.profile-meta { display: flex; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.78); padding: 10px 12px; }
+.profile h3 { margin: 18px 0 10px; }
+.order-history { display: grid; gap: 10px; margin-bottom: 14px; }
+.order-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.78); padding: 12px; }
+.order-row span, .order-row p, .order-row small { color: var(--muted); }
+.order-row p, .order-row small { grid-column: 1 / -1; margin: 0; }
+.order-row strong, .order-row span { display: block; }
 button:disabled { opacity: .55; cursor: not-allowed; }
 
 .admin-layout {
